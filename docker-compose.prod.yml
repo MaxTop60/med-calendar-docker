@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: med_calendar_postgres
+    environment:
+      POSTGRES_DB: med_calendar
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD} # Берется из .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - med_calendar_network
+    restart: always
+
+  backend:
+    build:
+      context: ./med_calendar_backend
+      dockerfile: Dockerfile.backend
+    container_name: med_calendar_backend
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/med_calendar
+      - DEBUG=False
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - media_volume:/app/media
+      - static_volume:/app/staticfiles
+    depends_on:
+      - postgres
+    networks:
+      - med_calendar_network
+    command: >
+      sh -c " python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn med_calendar_backend.wsgi:application --bind 0.0.0.0:8000 --workers 4 "
+    restart: always
+
+  frontend:
+    build:
+      context: ./med-calendar-frontend
+      dockerfile: Dockerfile.frontend.prod # Продакшн Dockerfile
+      args:
+        - VITE_API_URL=/api
+    container_name: med_calendar_frontend
+    networks:
+      - med_calendar_network
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    container_name: med_calendar_nginx
+    ports:
+      - "80:80"
+      - "443:443" # Для HTTPS
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:/static:ro
+      - media_volume:/media:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro # Для SSL сертификатов
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - med_calendar_network
+    restart: always
+
+networks:
+  med_calendar_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
