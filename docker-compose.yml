@@ -1,0 +1,120 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: med_calendar_postgres
+    environment:
+      POSTGRES_DB: med_calendar
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: maxsim12
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - med_calendar_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # PGAdmin (опционально)
+  pgadmin:
+    image: dpage/pgadmin4:8.14  # Не latest, а конкретная версия
+    container_name: med_calendar_pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=maxsimtorub@gmail.com
+      - PGADMIN_DEFAULT_PASSWORD=maxsim12
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_DISABLE_POSTFIX=True  # Ключевая опция!
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - med_calendar_network
+    restart: unless-stopped
+
+  # Django Backend
+  backend:
+    build:
+      context: ./med_calendar_backend
+      dockerfile: Dockerfile.backend
+    container_name: med_calendar_backend
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-maxsim12}@postgres:5432/${POSTGRES_DB:-med_calendar}
+      - DEBUG=True
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173
+      - CSRF_TRUSTED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_EMAIL=maxsimtorub@gmail.com
+      - DJANGO_SUPERUSER_PASSWORD=admin123
+    volumes:
+      - ./med_calendar_backend:/app
+      - media_volume:/app/media
+      - static_volume:/app/staticfiles  # Добавляем том для статики
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - med_calendar_network
+    command: >
+      sh -c "
+      python manage.py migrate --noinput &&
+      python manage.py collectstatic --noinput &&
+      python manage.py createsuperuser --noinput --name admin --email maxsimtorub@gmail.com --password maxsim12 || true &&
+      gunicorn med_calendar_backend.wsgi:application --bind 0.0.0.0:8000 --workers 3 --reload
+      "
+    restart: unless-stopped
+  # React Frontend
+  frontend:
+    build:
+      context: ./med-calendar-frontend
+      dockerfile: Dockerfile.frontend
+      args:
+        NODE_OPTIONS: "--max_old_space_size=4096"
+    container_name: med_calendar_frontend
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8000/api
+      - VITE_WS_URL=ws://localhost:8000/ws
+      - NODE_OPTIONS=--max-old-space-size=4096
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - ./med-calendar-frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    stdin_open: true
+    tty: true
+    networks:
+      - med_calendar_network
+    # Простая команда без проверок
+    command: npm run dev
+    restart: unless-stopped
+
+networks:
+  med_calendar_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  static_volume:
+    driver: local
+  media_volume:
+    driver: local
+  pgadmin_data:
+    driver: local
