@@ -1,6 +1,6 @@
 [submodule "med_calendar_backend"]
 	path = med_calendar_backend
-	url = https://github.com/maxtop60/med-calendar-backend.git
+	url = git@github.com:MaxTop60/med-calendar-backend.git
 [submodule "med-calendar-frontend"]
 	path = med-calendar-frontend
-	url = https://github.com/maxtop60/med-calendar-frontend.git
+	url = git@github.com:MaxTop60/med-calendar-frontend.git
