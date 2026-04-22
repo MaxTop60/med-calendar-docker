@@ -1,0 +1,19 @@
+FROM nginx:alpine
+
+# Копируем уже собранную статику
+COPY dist /usr/share/nginx/html
+
+# Конфиг nginx монтируется из docker-compose.yml, не копируем!
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]1~FROM nginx:alpine
+
+# Копируем уже собранную статику
+COPY dist /usr/share/nginx/html
+
+# Конфиг nginx монтируется из docker-compose.yml, не копируем!
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
